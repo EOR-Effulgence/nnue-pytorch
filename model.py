@@ -8,9 +8,10 @@ import sys
 import math
 
 # 3 layer fully connected network
-L1 = 1024
-L2 = 8
-L3 = 64
+# 水匠互換アーキテクチャ: HalfKP 256x2-32-32
+L1 = 256
+L2 = 32
+L3 = 32
 
 class NNUE(pl.LightningModule):
   """
