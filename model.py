@@ -13,6 +13,29 @@ L1 = 256
 L2 = 32
 L3 = 32
 
+# ============================================
+# QAT (Quantization-Aware Training) Support
+# ============================================
+
+class FakeQuantize(torch.autograd.Function):
+  """
+  Straight-Through Estimator (STE) を使用した量子化シミュレーション
+  Forward: 量子化 → 逆量子化 (量子化誤差を導入)
+  Backward: 勾配をそのまま通過
+  """
+  @staticmethod
+  def forward(ctx, x, scale, qmin, qmax):
+    x_q = torch.clamp(torch.round(x * scale), qmin, qmax)
+    return x_q / scale
+
+  @staticmethod
+  def backward(ctx, grad_output):
+    return grad_output, None, None, None
+
+def fake_quantize(x, scale, qmin, qmax):
+  """FakeQuantize のヘルパー関数"""
+  return FakeQuantize.apply(x, scale, qmin, qmax)
+
 class NNUE(pl.LightningModule):
   """
   This model attempts to directly represent the nodchip Stockfish trainer methodology.
@@ -26,13 +49,22 @@ class NNUE(pl.LightningModule):
       self, feature_set, lambda_=[1.0], lr=[1.0],
       label_smoothing_eps=0.0, num_batches_warmup=10000, newbob_decay=0.5,
       num_epochs_to_adjust_lr=500, score_scaling=361, min_newbob_scale=1e-5,
-      momentum=0.0):
+      momentum=0.0, use_qat=False):
     super(NNUE, self).__init__()
     self.input = nn.Linear(feature_set.num_features, L1)
     self.feature_set = feature_set
     self.l1 = nn.Linear(2 * L1, L2)
     self.l2 = nn.Linear(L2, L3)
     self.output = nn.Linear(L3, 1)
+
+    # QAT設定
+    self.use_qat = use_qat
+    # 量子化スケール (serialize.py と同一)
+    self.ft_scale = 127.0  # Feature Transformer: INT16
+    self.kWeightScaleBits = 6
+    self.kActivationScale = 127.0
+    self.kWeightScale = 64.0  # = (1 << 6) * 127 / 127
+    self.kMaxWeight = 127.0 / self.kWeightScale  # ≈ 1.98
     self.lambda_ = lambda_
     self.lr = lr
     self.label_smoothing_eps = label_smoothing_eps
@@ -109,11 +141,30 @@ class NNUE(pl.LightningModule):
   def forward(self, us, them, w_in, b_in):
     w = self.input(w_in)
     b = self.input(b_in)
+
+    if self.use_qat:
+      # Feature Transformer 出力の量子化シミュレート (INT16)
+      w = fake_quantize(w, self.ft_scale, -32768, 32767)
+      b = fake_quantize(b, self.ft_scale, -32768, 32767)
+
     l0_ = (us * torch.cat([w, b], dim=1)) + (them * torch.cat([b, w], dim=1))
     # clamp here is used as a clipped relu to (0.0, 1.0)
     l0_ = torch.clamp(l0_, 0.0, 1.0)
+
+    if self.use_qat:
+      # 活性化の量子化シミュレート (0~127 に丸めて 0~1 に戻す)
+      l0_ = fake_quantize(l0_, self.kActivationScale, 0, 127)
+
     l1_ = torch.clamp(self.l1(l0_), 0.0, 1.0)
+
+    if self.use_qat:
+      l1_ = fake_quantize(l1_, self.kActivationScale, 0, 127)
+
     l2_ = torch.clamp(self.l2(l1_), 0.0, 1.0)
+
+    if self.use_qat:
+      l2_ = fake_quantize(l2_, self.kActivationScale, 0, 127)
+
     x = self.output(l2_)
     return x
 

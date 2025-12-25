@@ -73,6 +73,7 @@ def main():
   parser.add_argument("--score-scaling", default=361, type=float, dest='score_scaling', help="Score scaling.")
   parser.add_argument("--min-newbob-scale", default=1e-5, type=float, dest='min_newbob_scale', help="Minimum learning rate to stop the training.")
   parser.add_argument("--momentum", default=0.0, type=float, dest='momentum', help="Momentum.")
+  parser.add_argument("--use-qat", action="store_true", dest='use_qat', help="Enable Quantization-Aware Training (default=False)")
   features.add_argparse_args(parser)
   args = parser.parse_args()
 
@@ -91,7 +92,8 @@ def main():
       newbob_decay=args.newbob_decay,
       num_epochs_to_adjust_lr=args.num_epochs_to_adjust_lr,
       score_scaling=args.score_scaling,
-      min_newbob_scale=args.min_newbob_scale, momentum=args.momentum)
+      min_newbob_scale=args.min_newbob_scale, momentum=args.momentum,
+      use_qat=args.use_qat)
   else:
     nnue = M.NNUE.load_from_checkpoint(args.resume_from_model, feature_set=feature_set)
     nnue.set_feature_set(feature_set)
@@ -106,11 +108,13 @@ def main():
     nnue.score_scaling=args.score_scaling
     nnue.min_newbob_scale=args.min_newbob_scale
     nnue.momentum=args.momentum
+    nnue.use_qat=args.use_qat
 
   print("Feature set: {}".format(feature_set.name))
   print("Num real features: {}".format(feature_set.num_real_features))
   print("Num virtual features: {}".format(feature_set.num_virtual_features))
   print("Num features: {}".format(feature_set.num_features))
+  print("QAT enabled: {}".format(args.use_qat))
 
   print("Training with {} validating with {}".format(args.train, args.val))
 
