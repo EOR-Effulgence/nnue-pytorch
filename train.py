@@ -7,6 +7,9 @@ import features
 import os
 import torch
 import pytorch_lightning.callbacks
+
+# RTX 30xx Tensor Cores最適化
+torch.set_float32_matmul_precision('medium')
 import typing
 from torch import set_num_threads as t_set_num_threads
 from pytorch_lightning import loggers as pl_loggers
