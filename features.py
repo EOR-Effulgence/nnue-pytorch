@@ -11,8 +11,9 @@ of feature block classes in that module.
 '''
 import halfkp
 import halfka
+import shogi_halfkav2_hm  # 将棋 HalfKAv2_hm (#14)
 
-_feature_modules = [halfkp, halfka]
+_feature_modules = [halfkp, halfka, shogi_halfkav2_hm]
 
 _feature_blocks_by_name = dict()
 
