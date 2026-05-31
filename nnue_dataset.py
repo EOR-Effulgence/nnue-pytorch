@@ -37,8 +37,10 @@ class SparseBatch(ctypes.Structure):
         them = 1.0 - us
         outcome = torch.from_numpy(np.ctypeslib.as_array(self.outcome, shape=(self.size, 1))).pin_memory().to(device=device, non_blocking=True)
         score = torch.from_numpy(np.ctypeslib.as_array(self.score, shape=(self.size, 1))).pin_memory().to(device=device, non_blocking=True)
-        white = torch.sparse_coo_tensor(iw, white_values, (self.size, self.num_inputs), is_coalesced=True)
-        black = torch.sparse_coo_tensor(ib, black_values, (self.size, self.num_inputs), is_coalesced=True)
+        # torch 2.0.1 では is_coalesced 引数が未サポート (2.1+ で追加)。
+        # COO 構築直後は通常 coalesced 状態だが、API 互換のため引数除去。
+        white = torch.sparse_coo_tensor(iw, white_values, (self.size, self.num_inputs))
+        black = torch.sparse_coo_tensor(ib, black_values, (self.size, self.num_inputs))
         return us, them, white, black, outcome, score
 
 SparseBatchPtr = ctypes.POINTER(SparseBatch)

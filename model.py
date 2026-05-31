@@ -25,7 +25,7 @@ class NNUE(pl.LightningModule):
       self, feature_set, lambda_=[1.0], lr=[1.0],
       label_smoothing_eps=0.0, num_batches_warmup=10000, newbob_decay=0.5,
       num_epochs_to_adjust_lr=500, score_scaling=361, min_newbob_scale=1e-5,
-      momentum=0.0):
+      momentum=0.0, lambda_jitter=0.0):
     super(NNUE, self).__init__()
     self.input = nn.Linear(feature_set.num_features, L1)
     self.feature_set = feature_set
@@ -48,6 +48,11 @@ class NNUE(pl.LightningModule):
     self.min_newbob_scale = min_newbob_scale
     self.parameter_index = 0
     self.momentum = momentum
+    # Lambda jitter (official-stockfish/nnue-pytorch #473 移植):
+    # 学習ステップごとに base_lambda にガウシアンノイズを加え、
+    # teacher_loss と outcome_loss の比率を確率的に揺らがせる正則化。
+    # 0.0 = 無効 (従来動作), 推奨 0.05-0.1
+    self.lambda_jitter = lambda_jitter
 
     self._zero_virtual_feature_weights()
 
@@ -133,7 +138,13 @@ class NNUE(pl.LightningModule):
     outcome_entropy = -(t * (t + epsilon).log() + (1.0 - t) * (1.0 - t + epsilon).log())
     teacher_loss = -(p * F.logsigmoid(q) + (1.0 - p) * F.logsigmoid(-q))
     outcome_loss = -(t * F.logsigmoid(q) + (1.0 - t) * F.logsigmoid(-q))
-    lambda_ = self.lambda_[self.parameter_index]
+    base_lambda = self.lambda_[self.parameter_index]
+    # Lambda jitter: 学習中のみガウシアンノイズを加え [0,1] にクリップ
+    if self.training and self.lambda_jitter > 0.0:
+      jitter = torch.randn((), device=q.device).item() * self.lambda_jitter
+      lambda_ = max(0.0, min(1.0, base_lambda + jitter))
+    else:
+      lambda_ = base_lambda
     result  = lambda_ * teacher_loss    + (1.0 - lambda_) * outcome_loss
     entropy = lambda_ * teacher_entropy + (1.0 - lambda_) * outcome_entropy
     loss = result.mean() - entropy.mean()

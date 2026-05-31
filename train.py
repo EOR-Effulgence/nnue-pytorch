@@ -76,6 +76,16 @@ def main():
   parser.add_argument("--score-scaling", default=361, type=float, dest='score_scaling', help="Score scaling.")
   parser.add_argument("--min-newbob-scale", default=1e-5, type=float, dest='min_newbob_scale', help="Minimum learning rate to stop the training.")
   parser.add_argument("--momentum", default=0.0, type=float, dest='momentum', help="Momentum.")
+  # Lambda jitter (official-stockfish/nnue-pytorch #473): teacher/outcome loss 比率を確率的に揺らがせる正則化。
+  parser.add_argument("--lambda-jitter", default=0.0, type=float, dest='lambda_jitter',
+                      help="Std of gaussian noise added to lambda each training step (0.0 = disabled).")
+  # SWA (official-stockfish/nnue-pytorch #474): Stochastic Weight Averaging。
+  parser.add_argument("--swa", action="store_true", dest='swa',
+                      help="Enable Stochastic Weight Averaging.")
+  parser.add_argument("--swa-lrs", default=1e-2, type=float, dest='swa_lrs',
+                      help="Learning rate during SWA averaging (default 1e-2).")
+  parser.add_argument("--swa-epoch-start", default=0.8, type=float, dest='swa_epoch_start',
+                      help="Fraction of max_epochs at which SWA starts (default 0.8).")
   features.add_argparse_args(parser)
   args = parser.parse_args()
 
@@ -94,7 +104,8 @@ def main():
       newbob_decay=args.newbob_decay,
       num_epochs_to_adjust_lr=args.num_epochs_to_adjust_lr,
       score_scaling=args.score_scaling,
-      min_newbob_scale=args.min_newbob_scale, momentum=args.momentum)
+      min_newbob_scale=args.min_newbob_scale, momentum=args.momentum,
+      lambda_jitter=args.lambda_jitter)
   else:
     nnue = M.NNUE.load_from_checkpoint(args.resume_from_model, feature_set=feature_set)
     nnue.set_feature_set(feature_set)
@@ -109,6 +120,7 @@ def main():
     nnue.score_scaling=args.score_scaling
     nnue.min_newbob_scale=args.min_newbob_scale
     nnue.momentum=args.momentum
+    nnue.lambda_jitter=args.lambda_jitter
 
   print("Feature set: {}".format(feature_set.name))
   print("Num real features: {}".format(feature_set.num_real_features))
@@ -137,7 +149,17 @@ def main():
 
   tb_logger = pl_loggers.TensorBoardLogger(logdir)
   checkpoint_callback = NetworkSaveCheckpoint(every_n_epochs=args.network_save_period, log_dir=tb_logger.log_dir)
-  trainer = pl.Trainer.from_argparse_args(args, callbacks=[checkpoint_callback], logger=tb_logger)
+  callbacks = [checkpoint_callback]
+  if args.swa:
+    # SWA (official-stockfish/nnue-pytorch #474 移植): Lightning 標準 callback を使用。
+    # swa_epoch_start は 0-1 の float なら fraction、int なら epoch 番号。
+    from pytorch_lightning.callbacks import StochasticWeightAveraging
+    swa_callback = StochasticWeightAveraging(swa_lrs=args.swa_lrs, swa_epoch_start=args.swa_epoch_start)
+    callbacks.append(swa_callback)
+    print(f"SWA enabled: lrs={args.swa_lrs}, epoch_start={args.swa_epoch_start}")
+  if args.lambda_jitter > 0.0:
+    print(f"Lambda jitter enabled: std={args.lambda_jitter}")
+  trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=tb_logger)
 
   main_device = 'cuda:0'
 
