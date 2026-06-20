@@ -10,6 +10,10 @@ local_dllpath = [n for n in glob.glob('./*training_data_loader.*') if n.endswith
 if not local_dllpath:
     print('Cannot find data_loader shared library.')
     sys.exit(1)
+# プラットフォーム毎に正しい拡張子を優先する (Windows に Linux の .so が
+# 同居していても .dll を選ぶ。混在は Syncthing 共有ディレクトリで起こりうる)。
+_preferred_ext = {'win32': '.dll', 'darwin': '.dylib'}.get(sys.platform, '.so')
+local_dllpath.sort(key=lambda n: 0 if n.endswith(_preferred_ext) else 1)
 dllpath = os.path.abspath(local_dllpath[0])
 dll = ctypes.cdll.LoadLibrary(dllpath)
 
