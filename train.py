@@ -67,6 +67,7 @@ def main():
   parser.add_argument("--smart-fen-skipping", action='store_true', dest='smart_fen_skipping', help="If enabled positions that are bad training targets will be skipped during loading. Default: False")
   parser.add_argument("--random-fen-skipping", default=0, type=int, dest='random_fen_skipping', help="skip fens randomly on average random_fen_skipping before using one.")
   parser.add_argument("--resume-from-model", dest='resume_from_model', help="Initializes training using the weights from the given .pt model")
+  parser.add_argument("--resume-ckpt", dest='resume_ckpt', default=None, help="Full Lightning resume from this .ckpt (restores optimizer/LR-scheduler/epoch). Continues epoch count.")
   parser.add_argument("--network-save-period", type=int, default=1000000000, dest='network_save_period', help="Number of epochs between network snapshots. None to disable.")
   parser.add_argument("--label-smoothing-eps", default=0.0, type=float, dest='label_smoothing_eps', help="Label smoothing eps.")
   parser.add_argument("--num-batches-warmup", default=10000, type=int, dest='num_batches_warmup', help="Number of batches for warm-up.")
@@ -170,7 +171,9 @@ def main():
     print('Using c++ data loader')
     train, val = data_loader_cc(args.train, args.val, feature_set, args.num_workers, batch_size, args.smart_fen_skipping, args.random_fen_skipping, main_device, args.epoch_size)
 
-  trainer.fit(nnue, train, val)
+  # --resume-ckpt 指定時は Lightning の完全 resume (optimizer/LR-scheduler/epoch を復元)。
+  # 未指定 (None) なら通常学習。
+  trainer.fit(nnue, train, val, ckpt_path=args.resume_ckpt)
 
   ckpt_file_path = os.path.join(tb_logger.log_dir, 'final.ckpt')
   trainer.save_checkpoint(ckpt_file_path)
