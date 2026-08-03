@@ -8,9 +8,12 @@ import sys
 import math
 
 # 3 layer fully connected network
-L1 = 1024
-L2 = 8
-L3 = 32
+# 環境変数で上書き可能 (Slice6 #116: 768x2-16-64 は NNUE_L1=768 NNUE_L2=16 NNUE_L3=64)。
+# default は従来の 1024x2-8-32 = 既存 run / resume に影響しない
+import os
+L1 = int(os.environ.get("NNUE_L1", 1024))
+L2 = int(os.environ.get("NNUE_L2", 8))
+L3 = int(os.environ.get("NNUE_L3", 32))
 
 class NNUE(pl.LightningModule):
   """

@@ -70,9 +70,14 @@ class NNUEWriter():
   def write_header(self, model, fc_hash):
     self.int32(VERSION) # version
     self.int32(fc_hash ^ model.feature_set.hash ^ (M.L1*2)) # halfkp network hash
-    description = b"Features=HalfKP(Friend)[125388->1024x2],"
-    description += b"Network=AffineTransform[1<-32](ClippedReLU[32](AffineTransform[32<-8]"
-    description += b"(ClippedReLU[8](AffineTransform[8<-2048](InputSlice[2048(0:2048)])))))"
+    # アーキテクチャ文字列は M.L1/L2/L3 から動的生成 (Slice6 #116)。
+    # default (1024/8/32) では従来のバイト列と完全一致する
+    description = f"Features=HalfKP(Friend)[125388->{M.L1}x2],".encode()
+    description += (
+      f"Network=AffineTransform[1<-{M.L3}](ClippedReLU[{M.L3}](AffineTransform[{M.L3}<-{M.L2}]"
+      f"(ClippedReLU[{M.L2}](AffineTransform[{M.L2}<-{M.L1 * 2}]"
+      f"(InputSlice[{M.L1 * 2}(0:{M.L1 * 2})])))))"
+    ).encode()
     self.int32(len(description)) # Network definition
     self.buf.extend(description)
 
