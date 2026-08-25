@@ -56,7 +56,17 @@ def main():
   parser = argparse.ArgumentParser(description="Trains the network.")
   parser.add_argument("train", help="Training data (.bin or .binpack)")
   parser.add_argument("val", help="Validation data (.bin or .binpack)")
-  parser = pl.Trainer.add_argparse_args(parser)
+  # lightning 2.0 で Trainer.add_argparse_args が削除されたため、実際に使う
+  # Trainer 引数だけを明示的に定義する (#289)。1.9 時代は Trainer の全引数が
+  # 自動で生えていたが、本プロジェクトが使うのは以下だけ
+  parser.add_argument("--accelerator", default="gpu", help="gpu / cpu / auto")
+  parser.add_argument("--devices", default=1, help="使用デバイス数 (int) または 'auto'")
+  parser.add_argument("--max_epochs", default=800, type=int, dest="max_epochs")
+  parser.add_argument("--default_root_dir", default=None, dest="default_root_dir")
+  parser.add_argument("--precision", default="32-true",
+                      help="32-true / 16-mixed / bf16-mixed。既定は 1.9 と同じ fp32")
+  parser.add_argument("--gradient_clip_val", default=None, type=float,
+                      dest="gradient_clip_val")
   parser.add_argument("--py-data", action="store_true", help="Use python data loader (default=False)")
   parser.add_argument("--lambda", default=[1.0], nargs='+', type=float, dest='lambda_', help="lambda=1.0 = train on evaluations, lambda=0.0 = train on game results, interpolates between (default=1.0).")
   parser.add_argument("--lr", default=[1.0], nargs='+', type=float, dest='lr', help="Initial learning rate.")
@@ -160,7 +170,21 @@ def main():
     print(f"SWA enabled: lrs={args.swa_lrs}, epoch_start={args.swa_epoch_start}")
   if args.lambda_jitter > 0.0:
     print(f"Lambda jitter enabled: std={args.lambda_jitter}")
-  trainer = pl.Trainer.from_argparse_args(args, callbacks=callbacks, logger=tb_logger)
+  # lightning 2.0 で Trainer.from_argparse_args が削除されたため明示構築する (#289)。
+  # devices は "auto" 指定も許すので int 変換を試みる
+  devices = args.devices
+  if isinstance(devices, str) and devices.isdigit():
+    devices = int(devices)
+  trainer = pl.Trainer(
+      accelerator=args.accelerator,
+      devices=devices,
+      max_epochs=args.max_epochs,
+      default_root_dir=args.default_root_dir,
+      precision=args.precision,
+      gradient_clip_val=args.gradient_clip_val,
+      callbacks=callbacks,
+      logger=tb_logger,
+  )
 
   main_device = 'cuda:0'
 

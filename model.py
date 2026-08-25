@@ -45,6 +45,8 @@ class NNUE(pl.LightningModule):
     self.num_epochs_to_adjust_lr = num_epochs_to_adjust_lr
     self.latest_loss_sum = 0.0
     self.latest_loss_count = 0
+    # #289: lightning 2.x では validation_epoch_end に outputs が渡らないので自前で貯める
+    self._val_losses = []
     self.score_scaling = score_scaling
     # Warmupを開始するステップ数
     self.warmup_start_global_step = 0
@@ -163,11 +165,20 @@ class NNUE(pl.LightningModule):
     return self.step_(batch, batch_idx, 'train_loss')
 
   def validation_step(self, batch, batch_idx):
-    return self.step_(batch, batch_idx, 'val_loss')
-  
-  def validation_epoch_end(self, outputs):
-    self.latest_loss_sum += float(sum(outputs)) / len(outputs);
+    loss = self.step_(batch, batch_idx, 'val_loss')
+    # #289: lightning 2.0 で validation_epoch_end が削除され outputs が
+    # 渡らなくなったため、step 側で自分で貯める (1.9 と同じ平均を再現する)
+    self._val_losses.append(float(loss))
+    return loss
+
+  def on_validation_epoch_end(self):
+    # newbob の LR 減衰はこの epoch 平均 loss で駆動される。
+    # 1.9 の validation_epoch_end(outputs) と同じ値になるよう自前で平均する
+    if not self._val_losses:
+      return
+    self.latest_loss_sum += sum(self._val_losses) / len(self._val_losses)
     self.latest_loss_count += 1
+    self._val_losses = []
 
     if self.newbob_decay != 1.0 and self.current_epoch > 0 and self.current_epoch % self.num_epochs_to_adjust_lr == 0:
       latest_loss = self.latest_loss_sum / self.latest_loss_count
@@ -195,17 +206,9 @@ class NNUE(pl.LightningModule):
     self.step_(batch, batch_idx, 'test_loss')
 
   # learning rate warm-up
-  def optimizer_step(
-      self,
-      epoch,
-      batch_idx,
-      optimizer,
-      optimizer_idx,
-      optimizer_closure,
-      on_tpu,
-      using_native_amp,
-      using_lbfgs,
-  ):
+  def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure=None):
+    # #289: lightning 2.0 で optimizer_idx / on_tpu / using_native_amp /
+    # using_lbfgs が削除された。本実装はどれも使っていないので落とすだけでよい
     # manually warm up lr without a scheduler
     if self.trainer.global_step - self.warmup_start_global_step < self.num_batches_warmup:
       warmup_scale = min(1.0, float(self.trainer.global_step - self.warmup_start_global_step + 1) / self.num_batches_warmup)
