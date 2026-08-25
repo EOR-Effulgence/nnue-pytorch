@@ -9,7 +9,14 @@
 #include <string>
 #include <memory>
 
+// ppl.h (Microsoft Parallel Patterns Library) は Windows 専用。
+// Linux ビルド (クラウド学習、L-base #289) では標準 C++ のスレッドで代替する。
+#ifdef _WIN32
 #include <ppl.h>
+#else
+#include <thread>
+#include <algorithm>
+#endif
 
 namespace training_data {
 
@@ -115,10 +122,41 @@ namespace training_data {
                 if (m_stream.read(reinterpret_cast<char*>(&packedSfenValues[0]), sizeof(Learner::PackedSfenValue) * n))
                 {
                     vec.resize(n);
+#ifdef _WIN32
                     concurrency::parallel_for(size_t(0), n, [&vec, &packedSfenValues](size_t i)
                         {
                             vec[i] = packedSfenValueToTrainingDataEntry(packedSfenValues[i]);
                         });
+#else
+                    // Linux: std::thread で n を等分する (PPL と同じ結果、順序も保存)
+                    {
+                        const std::size_t hw = std::max<std::size_t>(1u, std::thread::hardware_concurrency());
+                        const std::size_t nthreads = std::min<std::size_t>(hw, n);
+                        if (nthreads <= 1)
+                        {
+                            for (std::size_t i = 0; i < n; ++i)
+                                vec[i] = packedSfenValueToTrainingDataEntry(packedSfenValues[i]);
+                        }
+                        else
+                        {
+                            std::vector<std::thread> workers;
+                            workers.reserve(nthreads);
+                            const std::size_t chunk = (n + nthreads - 1) / nthreads;
+                            for (std::size_t t = 0; t < nthreads; ++t)
+                            {
+                                const std::size_t begin = t * chunk;
+                                const std::size_t end = std::min(begin + chunk, n);
+                                if (begin >= end) break;
+                                workers.emplace_back([&vec, &packedSfenValues, begin, end]()
+                                    {
+                                        for (std::size_t i = begin; i < end; ++i)
+                                            vec[i] = packedSfenValueToTrainingDataEntry(packedSfenValues[i]);
+                                    });
+                            }
+                            for (auto& w : workers) w.join();
+                        }
+                    }
+#endif
                     return;
                 }
                 else
