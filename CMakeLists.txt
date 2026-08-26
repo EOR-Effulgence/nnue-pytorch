@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 3.0)
+# CMake 3.28 は VERSION 3.0 指定を拒否する (3.5 未満のサポートは削除済み)。
+# 範囲指定にして、新しい CMake でも古い挙動を壊さずに通す (L-base #289)
+cmake_minimum_required(VERSION 3.10...3.28)
 
 project(training_data_loader)
 
