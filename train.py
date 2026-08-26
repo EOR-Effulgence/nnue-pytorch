@@ -184,6 +184,9 @@ def main():
       gradient_clip_val=args.gradient_clip_val,
       callbacks=callbacks,
       logger=tb_logger,
+      # ログはファイルに落とすので、\r で更新されるバーが 1 行ずつ積み上がって
+      # 1 epoch 約 2.4MB (800 epoch で 2GB) になる。進捗は tfevents から読む。
+      enable_progress_bar=False,
   )
 
   main_device = 'cuda:0'
