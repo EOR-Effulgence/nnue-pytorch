@@ -246,9 +246,13 @@ def main():
     if not args.target.endswith(".nnue"):
       raise Exception("Target file must end with .nnue")
     if args.source.endswith(".pt"):
-      nnue = torch.load(args.source)
+      # GPU 機で学習した ckpt は CUDA テンソルを含み、そのままだと重みの
+      # ヒストグラム出力 (.numpy()) が TypeError で落ちる。変換に GPU は
+      # 要らないので CPU に載せて読む
+      nnue = torch.load(args.source, map_location='cpu')
     else:
-      nnue = M.NNUE.load_from_checkpoint(args.source, feature_set=feature_set)
+      nnue = M.NNUE.load_from_checkpoint(args.source, feature_set=feature_set,
+                                         map_location='cpu')
     nnue.eval()
     writer = NNUEWriter(nnue, os.path.dirname(args.target))
     with open(args.target, 'wb') as f:
