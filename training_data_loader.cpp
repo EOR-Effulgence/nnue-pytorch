@@ -513,6 +513,11 @@ static void EnsureInitialize()
 
     //Eval::init();
 
+    // 学習データローダは評価関数を使わない (ラベルは PSV に焼き込み済み) が、
+    // is_ready() は既定で eval/nn.bin を読みに行き、読めないと起動に失敗する。
+    // 評価関数バイナリは頒布物で計算環境に置かない方針なので、読み込みごと省く。
+    Options["SkipLoadingEval"] = std::string("true");
+
     is_ready();
 }
 
