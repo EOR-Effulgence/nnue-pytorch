@@ -145,7 +145,8 @@ def main():
 
   batch_size = args.batch_size
   if batch_size <= 0:
-    batch_size = 128 if args.gpus == 0 else 8192
+    # --gpus は lightning 2.x 移行で削除済み (--accelerator で判定する)
+    batch_size = 128 if args.accelerator == 'cpu' else 8192
   print('Using batch size {}'.format(batch_size))
 
   print('Smart fen skipping: {}'.format(args.smart_fen_skipping))
